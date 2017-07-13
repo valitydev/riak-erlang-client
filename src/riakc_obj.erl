@@ -109,12 +109,12 @@
 -type ttl() :: non_neg_integer().
 
 -record(riakc_obj, {
-          bucket :: bucket(),
-          key :: key() | undefined,
+          bucket :: bucket() | undefined,
+          key :: key(),
           vclock :: vclock() | undefined,
           contents :: contents(),
           updatemetadata :: metadata() | undefined,
-          updatevalue :: value() | undefind
+          updatevalue :: value() | undefined
          }).
 
 -type riakc_obj() :: #riakc_obj{}. %% The record/type containing the entire Riak object.
