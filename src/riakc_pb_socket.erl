@@ -38,7 +38,7 @@
 -include("riakc.hrl").
 -behaviour(gen_server).
 
--export([start_link/2, start_link/3,
+-export([start_link/2, start_link/3, start_link/4,
          start/2, start/3,
          stop/1,
          set_options/2, set_options/3,
@@ -127,6 +127,18 @@
                   {end_key, binary()} |
                   {end_incl, boolean()}.
 -type cs_opts() :: [cs_opt()].
+-type reg_name() ::
+      {local , atom()}
+    | {global, term()}
+    | {via, module(), term()}
+.
+-type ref() ::
+      atom()
+    | {atom(), atom()}
+    | {global, atom()}
+    | {via, atom(), term()}
+    | pid()
+.
 
 %% Which client operation the default timeout is being requested
 %% for. `timeout' is the global default timeout. Any of these defaults
@@ -182,8 +194,8 @@
 
 %% @private Like `gen_server:call/3', but with the timeout hardcoded
 %% to `infinity'.
-call_infinity(Pid, Msg) ->
-    gen_server:call(Pid, Msg, infinity).
+call_infinity(Ref, Msg) ->
+    gen_server:call(Ref, Msg, infinity).
 
 %% @doc Create a linked process to talk with the riak server on Address:Port
 %%      Client id will be assigned by the server.
@@ -197,6 +209,12 @@ start_link(Address, Port) ->
 start_link(Address, Port, Options) when is_list(Options) ->
     gen_server:start_link(?MODULE, [Address, Port, Options], []).
 
+%% @doc Create a named linked process to talk with the riak server on Address:Port with Options.
+%%      Client id will be assigned by the server.
+-spec start_link(address(), portnum(), client_options(), reg_name()) -> {ok, pid()} | {error, term()}.
+start_link(Address, Port, Options, RegName) when is_list(Options) ->
+    gen_server:start_link(RegName, ?MODULE, [Address, Port, Options], []).
+
 %% @doc Create a process to talk with the riak server on Address:Port.
 %%      Client id will be assigned by the server.
 -spec start(address(), portnum()) -> {ok, pid()} | {error, term()}.
@@ -209,134 +227,134 @@ start(Address, Port, Options) when is_list(Options) ->
     gen_server:start(?MODULE, [Address, Port, Options], []).
 
 %% @doc Disconnect the socket and stop the process.
--spec stop(pid()) -> ok.
-stop(Pid) ->
-    call_infinity(Pid, stop).
+-spec stop(ref()) -> ok.
+stop(Ref) ->
+    call_infinity(Ref, stop).
 
 %% @doc Change the options for this socket.  Allows you to connect with one
 %%      set of options then run with another (e.g. connect with no options to
 %%      make sure the server is there, then enable queue_if_disconnected).
-%% @equiv set_options(Pid, Options, infinity)
+%% @equiv set_options(Ref, Options, infinity)
 %% @see start_link/3
--spec set_options(pid(), client_options()) -> ok.
-set_options(Pid, Options) ->
-    call_infinity(Pid, {set_options, Options}).
+-spec set_options(ref(), client_options()) -> ok.
+set_options(Ref, Options) ->
+    call_infinity(Ref, {set_options, Options}).
 
 %% @doc Like set_options/2, but with a gen_server timeout.
 %% @see start_link/3
 %% @deprecated
--spec set_options(pid(), client_options(), timeout()) -> ok.
-set_options(Pid, Options, Timeout) ->
-    gen_server:call(Pid, {set_options, Options}, Timeout).
+-spec set_options(ref(), client_options(), timeout()) -> ok.
+set_options(Ref, Options, Timeout) ->
+    gen_server:call(Ref, {set_options, Options}, Timeout).
 
 %% @doc Determines whether the client is connected. Returns true if
 %% connected, or false and a list of connection failures and frequencies if
 %% disconnected.
-%% @equiv is_connected(Pid, infinity)
--spec is_connected(pid()) -> true | {false, [connection_failure()]}.
-is_connected(Pid) ->
-    call_infinity(Pid, is_connected).
+%% @equiv is_connected(Ref, infinity)
+-spec is_connected(ref()) -> true | {false, [connection_failure()]}.
+is_connected(Ref) ->
+    call_infinity(Ref, is_connected).
 
 %% @doc Determines whether the client is connected, with the specified
 %% timeout to the client process. Returns true if connected, or false
 %% and a list of connection failures and frequencies if disconnected.
 %% @see is_connected/1
 %% @deprecated
--spec is_connected(pid(), timeout()) -> true | {false, [connection_failure()]}.
-is_connected(Pid, Timeout) ->
-    gen_server:call(Pid, is_connected, Timeout).
+-spec is_connected(ref(), timeout()) -> true | {false, [connection_failure()]}.
+is_connected(Ref, Timeout) ->
+    gen_server:call(Ref, is_connected, Timeout).
 
 %% @doc Ping the server
-%% @equiv ping(Pid, default_timeout(ping_timeout))
--spec ping(pid()) -> pong.
-ping(Pid) ->
-    call_infinity(Pid, {req, rpbpingreq, default_timeout(ping_timeout)}).
+%% @equiv ping(Ref, default_timeout(ping_timeout))
+-spec ping(ref()) -> pong.
+ping(Ref) ->
+    call_infinity(Ref, {req, rpbpingreq, default_timeout(ping_timeout)}).
 
 %% @doc Ping the server specifying timeout
--spec ping(pid(), timeout()) -> pong.
-ping(Pid, Timeout) ->
-    call_infinity(Pid, {req, rpbpingreq, Timeout}).
+-spec ping(ref(), timeout()) -> pong.
+ping(Ref, Timeout) ->
+    call_infinity(Ref, {req, rpbpingreq, Timeout}).
 
 %% @doc Get the client id for this connection
-%% @equiv get_client_id(Pid, default_timeout(get_client_id_timeout))
--spec get_client_id(pid()) -> {ok, client_id()} | {error, term()}.
-get_client_id(Pid) ->
-    get_client_id(Pid, default_timeout(get_client_id_timeout)).
+%% @equiv get_client_id(Ref, default_timeout(get_client_id_timeout))
+-spec get_client_id(ref()) -> {ok, client_id()} | {error, term()}.
+get_client_id(Ref) ->
+    get_client_id(Ref, default_timeout(get_client_id_timeout)).
 
 %% @doc Get the client id for this connection specifying timeout
--spec get_client_id(pid(), timeout()) -> {ok, client_id()} | {error, term()}.
-get_client_id(Pid, Timeout) ->
-    call_infinity(Pid, {req, rpbgetclientidreq, Timeout}).
+-spec get_client_id(ref(), timeout()) -> {ok, client_id()} | {error, term()}.
+get_client_id(Ref, Timeout) ->
+    call_infinity(Ref, {req, rpbgetclientidreq, Timeout}).
 
 %% @doc Set the client id for this connection
-%% @equiv set_client_id(Pid, ClientId, default_timeout(set_client_id_timeout))
--spec set_client_id(pid(), client_id()) -> {ok, client_id()} | {error, term()}.
-set_client_id(Pid, ClientId) ->
-    set_client_id(Pid, ClientId, default_timeout(set_client_id_timeout)).
+%% @equiv set_client_id(Ref, ClientId, default_timeout(set_client_id_timeout))
+-spec set_client_id(ref(), client_id()) -> {ok, client_id()} | {error, term()}.
+set_client_id(Ref, ClientId) ->
+    set_client_id(Ref, ClientId, default_timeout(set_client_id_timeout)).
 
 %% @doc Set the client id for this connection specifying timeout
--spec set_client_id(pid(), client_id(), timeout()) -> {ok, client_id()} | {error, term()}.
-set_client_id(Pid, ClientId, Timeout) ->
-    call_infinity(Pid,
+-spec set_client_id(ref(), client_id(), timeout()) -> {ok, client_id()} | {error, term()}.
+set_client_id(Ref, ClientId, Timeout) ->
+    call_infinity(Ref,
                   {req, #rpbsetclientidreq{client_id = ClientId},
                    Timeout}).
 
 %% @doc Get the server information for this connection
-%% @equiv get_server_info(Pid, default_timeout(get_server_info_timeout))
--spec get_server_info(pid()) -> {ok, server_info()} | {error, term()}.
-get_server_info(Pid) ->
-    get_server_info(Pid, default_timeout(get_server_info_timeout)).
+%% @equiv get_server_info(Ref, default_timeout(get_server_info_timeout))
+-spec get_server_info(ref()) -> {ok, server_info()} | {error, term()}.
+get_server_info(Ref) ->
+    get_server_info(Ref, default_timeout(get_server_info_timeout)).
 
 %% @doc Get the server information for this connection specifying timeout
--spec get_server_info(pid(), timeout()) -> {ok, server_info()} | {error, term()}.
-get_server_info(Pid, Timeout) ->
-    call_infinity(Pid, {req, rpbgetserverinforeq, Timeout}).
+-spec get_server_info(ref(), timeout()) -> {ok, server_info()} | {error, term()}.
+get_server_info(Ref, Timeout) ->
+    call_infinity(Ref, {req, rpbgetserverinforeq, Timeout}).
 
 %% @doc Get bucket/key from the server.
 %%      Will return {error, notfound} if the key is not on the server.
-%% @equiv get(Pid, Bucket, Key, [], default_timeout(get_timeout))
--spec get(pid(), bucket() | bucket_and_type(), key()) -> {ok, riakc_obj()} | {error, term()}.
-get(Pid, Bucket, Key) ->
-    get(Pid, Bucket, Key, [], default_timeout(get_timeout)).
+%% @equiv get(Ref, Bucket, Key, [], default_timeout(get_timeout))
+-spec get(ref(), bucket() | bucket_and_type(), key()) -> {ok, riakc_obj()} | {error, term()}.
+get(Ref, Bucket, Key) ->
+    get(Ref, Bucket, Key, [], default_timeout(get_timeout)).
 
 %% @doc Get bucket/key from the server specifying timeout.
 %%      Will return {error, notfound} if the key is not on the server.
-%% @equiv get(Pid, Bucket, Key, Options, Timeout)
--spec get(pid(), bucket() | bucket_and_type(), key(), TimeoutOrOptions::timeout() |  get_options()) ->
+%% @equiv get(Ref, Bucket, Key, Options, Timeout)
+-spec get(ref(), bucket() | bucket_and_type(), key(), TimeoutOrOptions::timeout() |  get_options()) ->
                  {ok, riakc_obj()} | {error, term()} | unchanged.
-get(Pid, Bucket, Key, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
-    get(Pid, Bucket, Key, [], Timeout);
-get(Pid, Bucket, Key, Options) ->
-    get(Pid, Bucket, Key, Options, default_timeout(get_timeout)).
+get(Ref, Bucket, Key, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
+    get(Ref, Bucket, Key, [], Timeout);
+get(Ref, Bucket, Key, Options) ->
+    get(Ref, Bucket, Key, Options, default_timeout(get_timeout)).
 
 %% @doc Get bucket/key from the server supplying options and timeout.
 %%      <code>unchanged</code> will be returned when the
 %%      <code>{if_modified, Vclock}</code> option is specified and the
 %%      object is unchanged.
--spec get(pid(), bucket() | bucket_and_type(), key(), get_options(), timeout()) ->
+-spec get(ref(), bucket() | bucket_and_type(), key(), get_options(), timeout()) ->
                  {ok, riakc_obj()} | {error, term()} | unchanged.
-get(Pid, Bucket, Key, Options, Timeout) ->
+get(Ref, Bucket, Key, Options, Timeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = get_options(Options, #rpbgetreq{type =T, bucket = B, key = Key}),
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Put the metadata/value in the object under bucket/key
-%% @equiv put(Pid, Obj, [])
+%% @equiv put(Ref, Obj, [])
 %% @see put/4
--spec put(pid(), riakc_obj()) ->
+-spec put(ref(), riakc_obj()) ->
                  ok | {ok, riakc_obj()} | {ok, key()} | {error, term()}.
-put(Pid, Obj) ->
-    put(Pid, Obj, []).
+put(Ref, Obj) ->
+    put(Ref, Obj, []).
 
 %% @doc Put the metadata/value in the object under bucket/key with options or timeout.
-%% @equiv put(Pid, Obj, Options, Timeout)
+%% @equiv put(Ref, Obj, Options, Timeout)
 %% @see put/4
--spec put(pid(), riakc_obj(), TimeoutOrOptions::timeout() | put_options()) ->
+-spec put(ref(), riakc_obj(), TimeoutOrOptions::timeout() | put_options()) ->
                  ok | {ok, riakc_obj()} |  riakc_obj() | {ok, key()} | {error, term()}.
-put(Pid, Obj, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
-    put(Pid, Obj, [], Timeout);
-put(Pid, Obj, Options) ->
-    put(Pid, Obj, Options, default_timeout(put_timeout)).
+put(Ref, Obj, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
+    put(Ref, Obj, [], Timeout);
+put(Ref, Obj, Options) ->
+    put(Ref, Obj, Options, default_timeout(put_timeout)).
 
 %% @doc Put the metadata/value in the object under bucket/key with
 %%      options and timeout. Put throws `siblings' if the
@@ -349,9 +367,9 @@ put(Pid, Obj, Options) ->
 %%      `return_body' was specified.
 %% @throws siblings
 %% @end
--spec put(pid(), riakc_obj(), put_options(), timeout()) ->
+-spec put(ref(), riakc_obj(), put_options(), timeout()) ->
                  ok | {ok, riakc_obj()} | riakc_obj() | {ok, key()} | {error, term()}.
-put(Pid, Obj, Options, Timeout) ->
+put(Ref, Obj, Options, Timeout) ->
     Content = riak_pb_kv_codec:encode_content({riakc_obj:get_update_metadata(Obj),
                                                riakc_obj:get_update_value(Obj)}),
     Req = put_options(Options,
@@ -360,127 +378,127 @@ put(Pid, Obj, Options, Timeout) ->
                                  key = riakc_obj:key(Obj),
                                  vclock = riakc_obj:vclock(Obj),
                                  content = Content}),
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Delete the key/value
-%% @equiv delete(Pid, Bucket, Key, [])
--spec delete(pid(), bucket() | bucket_and_type(), key()) -> ok | {error, term()}.
-delete(Pid, Bucket, Key) ->
-    delete(Pid, Bucket, Key, []).
+%% @equiv delete(Ref, Bucket, Key, [])
+-spec delete(ref(), bucket() | bucket_and_type(), key()) -> ok | {error, term()}.
+delete(Ref, Bucket, Key) ->
+    delete(Ref, Bucket, Key, []).
 
 %% @doc Delete the key/value specifying timeout or options. <em>Note that the rw quorum is deprecated, use r and w.</em>
-%% @equiv delete(Pid, Bucket, Key, Options, Timeout)
--spec delete(pid(), bucket() | bucket_and_type(), key(), TimeoutOrOptions::timeout() | delete_options()) ->
+%% @equiv delete(Ref, Bucket, Key, Options, Timeout)
+-spec delete(ref(), bucket() | bucket_and_type(), key(), TimeoutOrOptions::timeout() | delete_options()) ->
                     ok | {error, term()}.
-delete(Pid, Bucket, Key, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
-    delete(Pid, Bucket, Key, [], Timeout);
-delete(Pid, Bucket, Key, Options) ->
-    delete(Pid, Bucket, Key, Options, default_timeout(delete_timeout)).
+delete(Ref, Bucket, Key, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
+    delete(Ref, Bucket, Key, [], Timeout);
+delete(Ref, Bucket, Key, Options) ->
+    delete(Ref, Bucket, Key, Options, default_timeout(delete_timeout)).
 
 %% @doc Delete the key/value with options and timeout. <em>Note that the rw quorum is deprecated, use r and w.</em>
--spec delete(pid(), bucket() | bucket_and_type(), key(), delete_options(), timeout()) -> ok | {error, term()}.
-delete(Pid, Bucket, Key, Options, Timeout) ->
+-spec delete(ref(), bucket() | bucket_and_type(), key(), delete_options(), timeout()) -> ok | {error, term()}.
+delete(Ref, Bucket, Key, Options, Timeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = delete_options(Options, #rpbdelreq{type = T, bucket = B, key = Key}),
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 
 %% @doc Delete the object at Bucket/Key, giving the vector clock.
-%% @equiv delete_vclock(Pid, Bucket, Key, VClock, [])
--spec delete_vclock(pid(), bucket() | bucket_and_type(), key(), riakc_obj:vclock()) -> ok | {error, term()}.
-delete_vclock(Pid, Bucket, Key, VClock) ->
-    delete_vclock(Pid, Bucket, Key, VClock, []).
+%% @equiv delete_vclock(Ref, Bucket, Key, VClock, [])
+-spec delete_vclock(ref(), bucket() | bucket_and_type(), key(), riakc_obj:vclock()) -> ok | {error, term()}.
+delete_vclock(Ref, Bucket, Key, VClock) ->
+    delete_vclock(Ref, Bucket, Key, VClock, []).
 
 %% @doc Delete the object at Bucket/Key, specifying timeout or options and giving the vector clock.
-%% @equiv delete_vclock(Pid, Bucket, Key, VClock, Options, Timeout)
--spec delete_vclock(pid(), bucket() | bucket_and_type(), key(), riakc_obj:vclock(), TimeoutOrOptions::timeout() | delete_options()) ->
+%% @equiv delete_vclock(Ref, Bucket, Key, VClock, Options, Timeout)
+-spec delete_vclock(ref(), bucket() | bucket_and_type(), key(), riakc_obj:vclock(), TimeoutOrOptions::timeout() | delete_options()) ->
                            ok | {error, term()}.
-delete_vclock(Pid, Bucket, Key, VClock, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
-    delete_vclock(Pid, Bucket, Key, VClock, [], Timeout);
-delete_vclock(Pid, Bucket, Key, VClock, Options) ->
-    delete_vclock(Pid, Bucket, Key, VClock, Options, default_timeout(delete_timeout)).
+delete_vclock(Ref, Bucket, Key, VClock, Timeout) when is_integer(Timeout); Timeout =:= infinity ->
+    delete_vclock(Ref, Bucket, Key, VClock, [], Timeout);
+delete_vclock(Ref, Bucket, Key, VClock, Options) ->
+    delete_vclock(Ref, Bucket, Key, VClock, Options, default_timeout(delete_timeout)).
 
 %% @doc Delete the key/value with options and timeout and giving the
 %% vector clock. This form of delete ensures that subsequent get and
 %% put requests will be correctly ordered with the delete.
 %% @see delete_obj/4
--spec delete_vclock(pid(), bucket() | bucket_and_type(), key(), riakc_obj:vclock(), delete_options(), timeout()) ->
+-spec delete_vclock(ref(), bucket() | bucket_and_type(), key(), riakc_obj:vclock(), delete_options(), timeout()) ->
                            ok | {error, term()}.
-delete_vclock(Pid, Bucket, Key, VClock, Options, Timeout) ->
+delete_vclock(Ref, Bucket, Key, VClock, Options, Timeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = delete_options(Options, #rpbdelreq{type = T, bucket = B, key = Key,
             vclock=VClock}),
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 
 %% @doc Delete the riak object.
-%% @equiv delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj))
+%% @equiv delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj))
 %% @see delete_vclock/6
--spec delete_obj(pid(), riakc_obj()) -> ok | {error, term()}.
-delete_obj(Pid, Obj) ->
-    delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
+-spec delete_obj(ref(), riakc_obj()) -> ok | {error, term()}.
+delete_obj(Ref, Obj) ->
+    delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
         riakc_obj:vclock(Obj), [], default_timeout(delete_timeout)).
 
 %% @doc Delete the riak object with options.
-%% @equiv delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj), Options)
+%% @equiv delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj), Options)
 %% @see delete_vclock/6
--spec delete_obj(pid(), riakc_obj(), delete_options()) -> ok | {error, term()}.
-delete_obj(Pid, Obj, Options) ->
-    delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
+-spec delete_obj(ref(), riakc_obj(), delete_options()) -> ok | {error, term()}.
+delete_obj(Ref, Obj, Options) ->
+    delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
         riakc_obj:vclock(Obj), Options, default_timeout(delete_timeout)).
 
 %% @doc Delete the riak object with options and timeout.
-%% @equiv delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj), Options, Timeout)
+%% @equiv delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj), riakc_obj:vclock(Obj), Options, Timeout)
 %% @see delete_vclock/6
--spec delete_obj(pid(), riakc_obj(), delete_options(), timeout()) -> ok | {error, term()}.
-delete_obj(Pid, Obj, Options, Timeout) ->
-    delete_vclock(Pid, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
+-spec delete_obj(ref(), riakc_obj(), delete_options(), timeout()) -> ok | {error, term()}.
+delete_obj(Ref, Obj, Options, Timeout) ->
+    delete_vclock(Ref, riakc_obj:bucket(Obj), riakc_obj:key(Obj),
         riakc_obj:vclock(Obj), Options, Timeout).
 
 %% @doc List all buckets on the server in the "default" bucket type.
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
-%% @equiv list_buckets(Pid, default_timeout(list_buckets_timeout))
--spec list_buckets(pid()) -> {ok, [bucket()]} | {error, term()}.
-list_buckets(Pid) ->
-    list_buckets(Pid, <<"default">>, []).
+%% @equiv list_buckets(Ref, default_timeout(list_buckets_timeout))
+-spec list_buckets(ref()) -> {ok, [bucket()]} | {error, term()}.
+list_buckets(Ref) ->
+    list_buckets(Ref, <<"default">>, []).
 
 %% @doc List all buckets in a bucket type, specifying server-side timeout.
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
--spec list_buckets(pid(), timeout()|list()|binary()) -> {ok, [bucket()]} |
+-spec list_buckets(ref(), timeout()|list()|binary()) -> {ok, [bucket()]} |
                                                    {error, term()}.
-list_buckets(Pid, Type) when is_binary(Type) ->
-    list_buckets(Pid, Type, []);
-list_buckets(Pid, Timeout) when is_integer(Timeout) ->
-    list_buckets(Pid, <<"default">>, [{timeout, Timeout}]);
-list_buckets(Pid, Options) ->
-    list_buckets(Pid, <<"default">>, Options).
+list_buckets(Ref, Type) when is_binary(Type) ->
+    list_buckets(Ref, Type, []);
+list_buckets(Ref, Timeout) when is_integer(Timeout) ->
+    list_buckets(Ref, <<"default">>, [{timeout, Timeout}]);
+list_buckets(Ref, Options) ->
+    list_buckets(Ref, <<"default">>, Options).
 
-list_buckets(Pid, Type, Options) when is_binary(Type), is_list(Options) ->
-    case stream_list_buckets(Pid, Type, Options) of
+list_buckets(Ref, Type, Options) when is_binary(Type), is_list(Options) ->
+    case stream_list_buckets(Ref, Type, Options) of
         {ok, ReqId} ->
             riakc_utils:wait_for_list(ReqId);
         Error ->
             Error
     end.
 
-stream_list_buckets(Pid) ->
-    stream_list_buckets(Pid, <<"default">>, []).
+stream_list_buckets(Ref) ->
+    stream_list_buckets(Ref, <<"default">>, []).
 
-stream_list_buckets(Pid, Type) when is_binary(Type) ->
-    stream_list_buckets(Pid, Type, []);
-stream_list_buckets(Pid, Timeout) when is_integer(Timeout) ->
-    stream_list_buckets(Pid, <<"default">>,[{timeout, Timeout}]);
-stream_list_buckets(Pid, Options) ->
-    stream_list_buckets(Pid, <<"default">>, Options).
+stream_list_buckets(Ref, Type) when is_binary(Type) ->
+    stream_list_buckets(Ref, Type, []);
+stream_list_buckets(Ref, Timeout) when is_integer(Timeout) ->
+    stream_list_buckets(Ref, <<"default">>,[{timeout, Timeout}]);
+stream_list_buckets(Ref, Options) ->
+    stream_list_buckets(Ref, <<"default">>, Options).
 
-stream_list_buckets(Pid, Type, Options) ->
+stream_list_buckets(Ref, Type, Options) ->
     AllowListing = riakc_utils:get_allow_listing(Options),
-    do_stream_list_buckets(AllowListing, Pid, Type, Options).
+    do_stream_list_buckets(AllowListing, Ref, Type, Options).
 
 do_stream_list_buckets(false, _Pid, _Type, _Options) ->
     {error, <<"Bucket and key list operations are expensive "
               "and should not be used in production.">>};
-do_stream_list_buckets(true, Pid, Type, Options) ->
+do_stream_list_buckets(true, Ref, Type, Options) ->
     ST = case proplists:get_value(timeout, Options) of
              undefined -> ?DEFAULT_PB_TIMEOUT;
              T -> T
@@ -488,43 +506,43 @@ do_stream_list_buckets(true, Pid, Type, Options) ->
     ReqId = mk_reqid(),
     CT = ST + ?DEFAULT_ADDITIONAL_CLIENT_TIMEOUT,
     Req = #rpblistbucketsreq{timeout=ST, type=Type, stream=true},
-    call_infinity(Pid, {req, Req, CT, {ReqId, self()}}).
+    call_infinity(Ref, {req, Req, CT, {ReqId, self()}}).
 
-legacy_list_buckets(Pid, Options) when is_pid(Pid), is_list(Options) ->
+legacy_list_buckets(Ref, Options) when is_list(Options) ->
     AllowListing = riakc_utils:get_allow_listing(Options),
-    do_legacy_list_buckets(AllowListing, Pid, Options).
+    do_legacy_list_buckets(AllowListing, Ref, Options).
 
 do_legacy_list_buckets(false, _Pid, _Options) ->
     {error, <<"Bucket and key list operations are expensive "
               "and should not be used in production.">>};
-do_legacy_list_buckets(true, Pid, Options) ->
+do_legacy_list_buckets(true, Ref, Options) ->
     ST = case proplists:get_value(timeout, Options) of
              undefined -> ?DEFAULT_PB_TIMEOUT;
              T -> T
          end,
     CT = ST + ?DEFAULT_ADDITIONAL_CLIENT_TIMEOUT,
     Req = #rpblistbucketsreq{timeout=ST},
-    call_infinity(Pid, {req, Req, CT}).
+    call_infinity(Ref, {req, Req, CT}).
 
 %% @doc List all keys in a bucket
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
-%% @equiv list_keys(Pid, Bucket, default_timeout(list_keys_timeout))
--spec list_keys(pid(), bucket() | bucket_and_type()) -> {ok, [key()]} | {error, term()}.
-list_keys(Pid, Bucket) ->
-    list_keys(Pid, Bucket, []).
+%% @equiv list_keys(Ref, Bucket, default_timeout(list_keys_timeout))
+-spec list_keys(ref(), bucket() | bucket_and_type()) -> {ok, [key()]} | {error, term()}.
+list_keys(Ref, Bucket) ->
+    list_keys(Ref, Bucket, []).
 
 %% @doc List all keys in a bucket specifying timeout. This is
 %% implemented using {@link stream_list_keys/3} and then waiting for
 %% the results to complete streaming.
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
--spec list_keys(pid(), bucket() | bucket_and_type(), list()|timeout()) -> {ok, [key()]} |
+-spec list_keys(ref(), bucket() | bucket_and_type(), list()|timeout()) -> {ok, [key()]} |
                                                                           {error, term()}.
-list_keys(Pid, Bucket, infinity) ->
-    list_keys(Pid, Bucket, [{timeout, undefined}]);
-list_keys(Pid, Bucket, Timeout) when is_integer(Timeout) ->
-    list_keys(Pid, Bucket, [{timeout, Timeout}]);
-list_keys(Pid, Bucket, Options) ->
-    case stream_list_keys(Pid, Bucket, Options) of
+list_keys(Ref, Bucket, infinity) ->
+    list_keys(Ref, Bucket, [{timeout, undefined}]);
+list_keys(Ref, Bucket, Timeout) when is_integer(Timeout) ->
+    list_keys(Ref, Bucket, [{timeout, Timeout}]);
+list_keys(Ref, Bucket, Options) ->
+    case stream_list_keys(Ref, Bucket, Options) of
         {ok, ReqId} ->
             riakc_utils:wait_for_list(ReqId);
         Error ->
@@ -536,10 +554,10 @@ list_keys(Pid, Bucket, Options) ->
 %% ```    {ReqId::req_id(), {keys, [key()]}}
 %%        {ReqId::req_id(), done}'''
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
-%% @equiv stream_list_keys(Pid, Bucket, default_timeout(stream_list_keys_timeout))
--spec stream_list_keys(pid(), bucket()) -> {ok, req_id()} | {error, term()}.
-stream_list_keys(Pid, Bucket) ->
-    stream_list_keys(Pid, Bucket, []).
+%% @equiv stream_list_keys(Ref, Bucket, default_timeout(stream_list_keys_timeout))
+-spec stream_list_keys(ref(), bucket()) -> {ok, req_id()} | {error, term()}.
+stream_list_keys(Ref, Bucket) ->
+    stream_list_keys(Ref, Bucket, []).
 
 %% @doc Stream list of keys in the bucket to the calling process specifying server side
 %%      timeout.
@@ -547,22 +565,22 @@ stream_list_keys(Pid, Bucket) ->
 %% ```    {ReqId::req_id(), {keys, [key()]}}
 %%        {ReqId::req_id(), done}'''
 %% <em>This is a potentially expensive operation and should not be used in production.</em>
-%% @equiv stream_list_keys(Pid, Bucket, Timeout, default_timeout(stream_list_keys_call_timeout))
--spec stream_list_keys(pid(), bucket() | bucket_and_type(), integer()|list()) ->
+%% @equiv stream_list_keys(Ref, Bucket, Timeout, default_timeout(stream_list_keys_call_timeout))
+-spec stream_list_keys(ref(), bucket() | bucket_and_type(), integer()|list()) ->
                               {ok, req_id()} |
                               {error, term()}.
-stream_list_keys(Pid, Bucket, infinity) ->
-    stream_list_keys(Pid, Bucket, [{timeout, undefined}]);
-stream_list_keys(Pid, Bucket, Timeout) when is_integer(Timeout) ->
-    stream_list_keys(Pid, Bucket, [{timeout, Timeout}]);
-stream_list_keys(Pid, Bucket, Options) ->
+stream_list_keys(Ref, Bucket, infinity) ->
+    stream_list_keys(Ref, Bucket, [{timeout, undefined}]);
+stream_list_keys(Ref, Bucket, Timeout) when is_integer(Timeout) ->
+    stream_list_keys(Ref, Bucket, [{timeout, Timeout}]);
+stream_list_keys(Ref, Bucket, Options) ->
     AllowListing = riakc_utils:get_allow_listing(Options),
-    do_stream_list_keys(AllowListing, Pid, Bucket, Options).
+    do_stream_list_keys(AllowListing, Ref, Bucket, Options).
 
 do_stream_list_keys(false, _Pid, _Bucket, _Options) ->
     {error, <<"Bucket and key list operations are expensive "
               "and should not be used in production.">>};
-do_stream_list_keys(true, Pid, Bucket, Options) ->
+do_stream_list_keys(true, Ref, Bucket, Options) ->
     ST = case proplists:get_value(timeout, Options) of
              undefined -> ?DEFAULT_PB_TIMEOUT;
              T -> T
@@ -571,120 +589,120 @@ do_stream_list_keys(true, Pid, Bucket, Options) ->
     CT = ST + ?DEFAULT_ADDITIONAL_CLIENT_TIMEOUT,
     Req = #rpblistkeysreq{type=BT, bucket=B, timeout=ST},
     ReqId = mk_reqid(),
-    call_infinity(Pid, {req, Req, CT, {ReqId, self()}}).
+    call_infinity(Ref, {req, Req, CT, {ReqId, self()}}).
 
 %% @doc Get bucket properties.
-%% @equiv get_bucket(Pid, Bucket, default_timeout(get_bucket_timeout))
--spec get_bucket(pid(), bucket() | bucket_and_type()) -> {ok, bucket_props()} | {error, term()}.
-get_bucket(Pid, Bucket) ->
-    get_bucket(Pid, Bucket, default_timeout(get_bucket_timeout)).
+%% @equiv get_bucket(Ref, Bucket, default_timeout(get_bucket_timeout))
+-spec get_bucket(ref(), bucket() | bucket_and_type()) -> {ok, bucket_props()} | {error, term()}.
+get_bucket(Ref, Bucket) ->
+    get_bucket(Ref, Bucket, default_timeout(get_bucket_timeout)).
 
 %% @doc Get bucket properties specifying a server side timeout.
-%% @equiv get_bucket(Pid, Bucket, Timeout, default_timeout(get_bucket_call_timeout))
--spec get_bucket(pid(), bucket() | bucket_and_type(), timeout()) -> {ok, bucket_props()} | {error, term()}.
-get_bucket(Pid, Bucket, Timeout) ->
-    get_bucket(Pid, Bucket, Timeout, default_timeout(get_bucket_call_timeout)).
+%% @equiv get_bucket(Ref, Bucket, Timeout, default_timeout(get_bucket_call_timeout))
+-spec get_bucket(ref(), bucket() | bucket_and_type(), timeout()) -> {ok, bucket_props()} | {error, term()}.
+get_bucket(Ref, Bucket, Timeout) ->
+    get_bucket(Ref, Bucket, Timeout, default_timeout(get_bucket_call_timeout)).
 
 %% @doc Get bucket properties specifying a server side and local call timeout.
 %% @deprecated because `CallTimeout' is ignored
--spec get_bucket(pid(), bucket() | bucket_and_type(), timeout(), timeout()) -> {ok, bucket_props()} |
+-spec get_bucket(ref(), bucket() | bucket_and_type(), timeout(), timeout()) -> {ok, bucket_props()} |
                                                            {error, term()}.
-get_bucket(Pid, Bucket, Timeout, _CallTimeout) ->
+get_bucket(Ref, Bucket, Timeout, _CallTimeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = #rpbgetbucketreq{type = T, bucket = B},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
-get_bucket_type(Pid, BucketType) ->
-    get_bucket_type(Pid, BucketType, default_timeout(get_bucket_timeout)).
+get_bucket_type(Ref, BucketType) ->
+    get_bucket_type(Ref, BucketType, default_timeout(get_bucket_timeout)).
 
-get_bucket_type(Pid, BucketType, Timeout) ->
+get_bucket_type(Ref, BucketType, Timeout) ->
     Req = #rpbgetbuckettypereq{type = BucketType},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Set bucket properties.
-%% @equiv set_bucket(Pid, Bucket, BucketProps, default_timeout(set_bucket_timeout))
--spec set_bucket(pid(), bucket() | bucket_and_type(), bucket_props()) -> ok | {error, term()}.
-set_bucket(Pid, Bucket, BucketProps) ->
-    set_bucket(Pid, Bucket, BucketProps, default_timeout(set_bucket_timeout)).
+%% @equiv set_bucket(Ref, Bucket, BucketProps, default_timeout(set_bucket_timeout))
+-spec set_bucket(ref(), bucket() | bucket_and_type(), bucket_props()) -> ok | {error, term()}.
+set_bucket(Ref, Bucket, BucketProps) ->
+    set_bucket(Ref, Bucket, BucketProps, default_timeout(set_bucket_timeout)).
 
 %% @doc Set bucket properties specifying a server side timeout.
-%% @equiv set_bucket(Pid, Bucket, BucketProps, Timeout, default_timeout(set_bucket_call_timeout))
--spec set_bucket(pid(), bucket() | bucket_and_type(), bucket_props(), timeout()) -> ok | {error, term()}.
-set_bucket(Pid, Bucket, BucketProps, Timeout) ->
-    set_bucket(Pid, Bucket, BucketProps, Timeout,
+%% @equiv set_bucket(Ref, Bucket, BucketProps, Timeout, default_timeout(set_bucket_call_timeout))
+-spec set_bucket(ref(), bucket() | bucket_and_type(), bucket_props(), timeout()) -> ok | {error, term()}.
+set_bucket(Ref, Bucket, BucketProps, Timeout) ->
+    set_bucket(Ref, Bucket, BucketProps, Timeout,
                default_timeout(set_bucket_call_timeout)).
 
 %% @doc Set bucket properties specifying a server side and local call timeout.
 %% @deprecated because `CallTimeout' is ignored
--spec set_bucket(pid(), bucket() | bucket_and_type(), bucket_props(), timeout(), timeout()) -> ok | {error, term()}.
-set_bucket(Pid, Bucket, BucketProps, Timeout, _CallTimeout) ->
+-spec set_bucket(ref(), bucket() | bucket_and_type(), bucket_props(), timeout(), timeout()) -> ok | {error, term()}.
+set_bucket(Ref, Bucket, BucketProps, Timeout, _CallTimeout) ->
     PbProps = riak_pb_codec:encode_bucket_props(BucketProps),
     {T, B} = maybe_bucket_type(Bucket),
     Req = #rpbsetbucketreq{type = T, bucket = B, props = PbProps},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
-set_bucket_type(Pid, BucketType, BucketProps) ->
-    set_bucket_type(Pid, BucketType, BucketProps, default_timeout(set_bucket_timeout)).
+set_bucket_type(Ref, BucketType, BucketProps) ->
+    set_bucket_type(Ref, BucketType, BucketProps, default_timeout(set_bucket_timeout)).
 
-set_bucket_type(Pid, BucketType, BucketProps, Timeout) ->
+set_bucket_type(Ref, BucketType, BucketProps, Timeout) ->
     PbProps = riak_pb_codec:encode_bucket_props(BucketProps),
     Req = #rpbsetbuckettypereq{type = BucketType, props = PbProps},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Reset bucket properties back to the defaults.
-%% @equiv reset_bucket(Pid, Bucket, default_timeout(reset_bucket_timeout), default_timeout(reset_bucket_call_timeout))
--spec reset_bucket(pid(), bucket() | bucket_and_type()) -> ok | {error, term()}.
-reset_bucket(Pid, Bucket) ->
-    reset_bucket(Pid, Bucket, default_timeout(reset_bucket_timeout), default_timeout(reset_bucket_call_timeout)).
+%% @equiv reset_bucket(Ref, Bucket, default_timeout(reset_bucket_timeout), default_timeout(reset_bucket_call_timeout))
+-spec reset_bucket(ref(), bucket() | bucket_and_type()) -> ok | {error, term()}.
+reset_bucket(Ref, Bucket) ->
+    reset_bucket(Ref, Bucket, default_timeout(reset_bucket_timeout), default_timeout(reset_bucket_call_timeout)).
 
 %% @doc Reset bucket properties back to the defaults.
-%% @equiv reset_bucket(Pid, Bucket, Timeout, default_timeout(reset_bucket_call_timeout))
--spec reset_bucket(pid(), bucket() | bucket_and_type(), timeout()) -> ok | {error, term()}.
-reset_bucket(Pid, Bucket, Timeout) ->
-    reset_bucket(Pid, Bucket, Timeout, default_timeout(reset_bucket_call_timeout)).
+%% @equiv reset_bucket(Ref, Bucket, Timeout, default_timeout(reset_bucket_call_timeout))
+-spec reset_bucket(ref(), bucket() | bucket_and_type(), timeout()) -> ok | {error, term()}.
+reset_bucket(Ref, Bucket, Timeout) ->
+    reset_bucket(Ref, Bucket, Timeout, default_timeout(reset_bucket_call_timeout)).
 
 %% @doc Reset bucket properties back to the defaults.
 %% @deprecated because `CallTimeout' is ignored
--spec reset_bucket(pid(), bucket() | bucket_and_type(), timeout(), timeout()) -> ok | {error, term()}.
-reset_bucket(Pid, Bucket, Timeout, _CallTimeout) ->
+-spec reset_bucket(ref(), bucket() | bucket_and_type(), timeout(), timeout()) -> ok | {error, term()}.
+reset_bucket(Ref, Bucket, Timeout, _CallTimeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = #rpbresetbucketreq{type = T, bucket = B},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Perform a MapReduce job across the cluster.
 %%      See the MapReduce documentation for explanation of behavior.
 %% @equiv mapred(Inputs, Query, default_timeout(mapred))
--spec mapred(pid(), mapred_inputs(), [mapred_queryterm()]) ->
+-spec mapred(ref(), mapred_inputs(), [mapred_queryterm()]) ->
                     {ok, mapred_result()} |
                     {error, {badqterm, mapred_queryterm()}} |
                     {error, timeout} |
                     {error, term()}.
-mapred(Pid, Inputs, Query) ->
-    mapred(Pid, Inputs, Query, default_timeout(mapred_timeout)).
+mapred(Ref, Inputs, Query) ->
+    mapred(Ref, Inputs, Query, default_timeout(mapred_timeout)).
 
 %% @doc Perform a MapReduce job across the cluster with a job timeout.
 %%      See the MapReduce documentation for explanation of behavior.
-%% @equiv mapred(Pid, Inputs, Query, Timeout, default_timeout(mapred_call_timeout))
--spec mapred(pid(), mapred_inputs(), [mapred_queryterm()], timeout()) ->
+%% @equiv mapred(Ref, Inputs, Query, Timeout, default_timeout(mapred_call_timeout))
+-spec mapred(ref(), mapred_inputs(), [mapred_queryterm()], timeout()) ->
                     {ok, mapred_result()} |
                     {error, {badqterm, mapred_queryterm()}} |
                     {error, timeout} |
                     {error, term()}.
-mapred(Pid, Inputs, Query, Timeout) ->
-    mapred(Pid, Inputs, Query, Timeout, default_timeout(mapred_call_timeout)).
+mapred(Ref, Inputs, Query, Timeout) ->
+    mapred(Ref, Inputs, Query, Timeout, default_timeout(mapred_call_timeout)).
 
 %% @doc Perform a MapReduce job across the cluster with a job and
 %%      local call timeout.  See the MapReduce documentation for
 %%      explanation of behavior. This is implemented by using
 %%      <code>mapred_stream/6</code> and then waiting for all results.
 %% @see mapred_stream/6
--spec mapred(pid(), mapred_inputs(), [mapred_queryterm()], timeout(), timeout()) ->
+-spec mapred(ref(), mapred_inputs(), [mapred_queryterm()], timeout(), timeout()) ->
                     {ok, mapred_result()} |
                     {error, {badqterm, mapred_queryterm()}} |
                     {error, timeout} |
                     {error, term()}.
-mapred(Pid, Inputs, Query, Timeout, CallTimeout) ->
-    case mapred_stream(Pid, Inputs, Query, self(), Timeout, CallTimeout) of
+mapred(Ref, Inputs, Query, Timeout, CallTimeout) ->
+    case mapred_stream(Ref, Inputs, Query, self(), Timeout, CallTimeout) of
         {ok, ReqId} ->
             wait_for_mapred(ReqId, Timeout);
         Error ->
@@ -698,13 +716,13 @@ mapred(Pid, Inputs, Query, Timeout, CallTimeout) ->
 %% ```  {ReqId::req_id(), {mapred, Phase::non_neg_integer(), mapred_result()}}
 %%      {ReqId::req_id(), done}'''
 %% @equiv mapred_stream(ConnectionPid, Inputs, Query, ClientPid, default_timeout(mapred_stream_timeout))
--spec mapred_stream(ConnectionPid::pid(),Inputs::mapred_inputs(),Query::[mapred_queryterm()], ClientPid::pid()) ->
+-spec mapred_stream(ConnectionPid::ref(),Inputs::mapred_inputs(),Query::[mapred_queryterm()], ClientPid::ref()) ->
                            {ok, req_id()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_stream(Pid, Inputs, Query, ClientPid) ->
-    mapred_stream(Pid, Inputs, Query, ClientPid, default_timeout(mapred_stream_timeout)).
+mapred_stream(Ref, Inputs, Query, ClientPid) ->
+    mapred_stream(Ref, Inputs, Query, ClientPid, default_timeout(mapred_stream_timeout)).
 
 %% @doc Perform a streaming MapReduce job with a timeout across the cluster.
 %%      sending results to ClientPid.
@@ -713,13 +731,13 @@ mapred_stream(Pid, Inputs, Query, ClientPid) ->
 %% ```  {ReqId::req_id(), {mapred, Phase::non_neg_integer(), mapred_result()}}
 %%      {ReqId::req_id(), done}'''
 %% @equiv mapred_stream(ConnectionPid, Inputs, Query, ClientPid, Timeout, default_timeout(mapred_stream_call_timeout))
--spec mapred_stream(ConnectionPid::pid(),Inputs::mapred_inputs(),Query::[mapred_queryterm()], ClientPid::pid(), Timeout::timeout()) ->
+-spec mapred_stream(ConnectionPid::ref(),Inputs::mapred_inputs(),Query::[mapred_queryterm()], ClientPid::ref(), Timeout::timeout()) ->
                            {ok, req_id()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_stream(Pid, Inputs, Query, ClientPid, Timeout) ->
-    mapred_stream(Pid, Inputs, Query, ClientPid, Timeout,
+mapred_stream(Ref, Inputs, Query, ClientPid, Timeout) ->
+    mapred_stream(Ref, Inputs, Query, ClientPid, Timeout,
                   default_timeout(mapred_stream_call_timeout)).
 
 %% @doc Perform a streaming MapReduce job with a map/red timeout across the cluster,
@@ -729,31 +747,31 @@ mapred_stream(Pid, Inputs, Query, ClientPid, Timeout) ->
 %% ```  {ReqId::req_id(), {mapred, Phase::non_neg_integer(), mapred_result()}}
 %%      {ReqId::req_id(), done}'''
 %% @deprecated because `CallTimeout' is ignored
--spec mapred_stream(ConnectionPid::pid(),Inputs::mapred_inputs(),
-                    Query::[mapred_queryterm()], ClientPid::pid(),
+-spec mapred_stream(ConnectionPid::ref(),Inputs::mapred_inputs(),
+                    Query::[mapred_queryterm()], ClientPid::ref(),
                     Timeout::timeout(), CallTimeout::timeout()) ->
                            {ok, req_id()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_stream(Pid, {index,Bucket,Name,Key}, Query, ClientPid, Timeout, CallTimeout) when is_tuple(Name) ->
+mapred_stream(Ref, {index,Bucket,Name,Key}, Query, ClientPid, Timeout, CallTimeout) when is_tuple(Name) ->
     Index = riakc_obj:index_id_to_bin(Name),
-    mapred_stream(Pid, {index,Bucket,Index,Key}, Query, ClientPid, Timeout, CallTimeout);
-mapred_stream(Pid, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_tuple(Name) ->
+    mapred_stream(Ref, {index,Bucket,Index,Key}, Query, ClientPid, Timeout, CallTimeout);
+mapred_stream(Ref, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_tuple(Name) ->
     Index = riakc_obj:index_id_to_bin(Name),
-    mapred_stream(Pid, {index,Bucket,Index,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout);
-mapred_stream(Pid, {index,Bucket,Name,Key}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(Key) ->
+    mapred_stream(Ref, {index,Bucket,Index,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout);
+mapred_stream(Ref, {index,Bucket,Name,Key}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(Key) ->
     BinKey = list_to_binary(integer_to_list(Key)),
-    mapred_stream(Pid, {index,Bucket,Name,BinKey}, Query, ClientPid, Timeout, CallTimeout);
-mapred_stream(Pid, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(StartKey) ->
+    mapred_stream(Ref, {index,Bucket,Name,BinKey}, Query, ClientPid, Timeout, CallTimeout);
+mapred_stream(Ref, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(StartKey) ->
     BinStartKey = list_to_binary(integer_to_list(StartKey)),
-    mapred_stream(Pid, {index,Bucket,Name,BinStartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout);
-mapred_stream(Pid, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(EndKey) ->
+    mapred_stream(Ref, {index,Bucket,Name,BinStartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout);
+mapred_stream(Ref, {index,Bucket,Name,StartKey,EndKey}, Query, ClientPid, Timeout, CallTimeout) when is_binary(Name) andalso is_integer(EndKey) ->
     BinEndKey = list_to_binary(integer_to_list(EndKey)),
-    mapred_stream(Pid, {index,Bucket,Name,StartKey,BinEndKey}, Query, ClientPid, Timeout, CallTimeout);
-mapred_stream(Pid, Inputs, Query, ClientPid, Timeout, _CallTimeout) ->
+    mapred_stream(Ref, {index,Bucket,Name,StartKey,BinEndKey}, Query, ClientPid, Timeout, CallTimeout);
+mapred_stream(Ref, Inputs, Query, ClientPid, Timeout, _CallTimeout) ->
     AllowListing = riakc_utils:get_allow_listing(),
-    do_mapred_stream(AllowListing, Pid, Inputs, Query, ClientPid, Timeout).
+    do_mapred_stream(AllowListing, Ref, Inputs, Query, ClientPid, Timeout).
 
 do_mapred_stream(false, _Pid, Bucket, _Query, _ClientPid, _Timeout) when is_binary(Bucket) ->
     {error, <<"Bucket list operations are expensive "
@@ -762,49 +780,49 @@ do_mapred_stream(false, _Pid, {Type, Bucket}, _Query, _ClientPid, _Timeout)
   when is_binary(Type), is_binary(Bucket) ->
     {error, <<"Bucket list operations are expensive "
               "and should not be used in production.">>};
-do_mapred_stream(_AllowListing, Pid, Inputs, Query, ClientPid, Timeout) ->
+do_mapred_stream(_AllowListing, Ref, Inputs, Query, ClientPid, Timeout) ->
     MapRed = [{'inputs', Inputs},
               {'query', Query},
               {'timeout', Timeout}],
-    send_mapred_req(Pid, MapRed, ClientPid).
+    send_mapred_req(Ref, MapRed, ClientPid).
 
 %% @doc Perform a MapReduce job against a bucket across the cluster.
 %%      See the MapReduce documentation for explanation of behavior.
 %% <em>This uses list_keys under the hood and so is potentially an expensive operation that should not be used in production.</em>
-%% @equiv mapred_bucket(Pid, Bucket, Query, default_timeout(mapred_bucket_timeout))
--spec mapred_bucket(Pid::pid(), Bucket::bucket(), Query::[mapred_queryterm()]) ->
+%% @equiv mapred_bucket(Ref, Bucket, Query, default_timeout(mapred_bucket_timeout))
+-spec mapred_bucket(Ref::ref(), Bucket::bucket(), Query::[mapred_queryterm()]) ->
                            {ok, mapred_result()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_bucket(Pid, Bucket, Query) ->
-    mapred_bucket(Pid, Bucket, Query, default_timeout(mapred_bucket_timeout)).
+mapred_bucket(Ref, Bucket, Query) ->
+    mapred_bucket(Ref, Bucket, Query, default_timeout(mapred_bucket_timeout)).
 
 %% @doc Perform a MapReduce job against a bucket with a timeout
 %%      across the cluster.
 %%      See the MapReduce documentation for explanation of behavior.
 %% <em>This uses list_keys under the hood and so is potentially an expensive operation that should not be used in production.</em>
-%% @equiv mapred_bucket(Pid, Bucket, Query, Timeout, default_timeout(mapred_bucket_call_timeout))
--spec mapred_bucket(Pid::pid(), Bucket::bucket(), Query::[mapred_queryterm()], Timeout::timeout()) ->
+%% @equiv mapred_bucket(Ref, Bucket, Query, Timeout, default_timeout(mapred_bucket_call_timeout))
+-spec mapred_bucket(Ref::ref(), Bucket::bucket(), Query::[mapred_queryterm()], Timeout::timeout()) ->
                            {ok, mapred_result()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_bucket(Pid, Bucket, Query, Timeout) ->
-    mapred_bucket(Pid, Bucket, Query, Timeout, default_timeout(mapred_bucket_call_timeout)).
+mapred_bucket(Ref, Bucket, Query, Timeout) ->
+    mapred_bucket(Ref, Bucket, Query, Timeout, default_timeout(mapred_bucket_call_timeout)).
 
 %% @doc Perform a MapReduce job against a bucket with a timeout
 %%      across the cluster and local call timeout.
 %%      See the MapReduce documentation for explanation of behavior.
 %% <em>This uses list_keys under the hood and so is potentially an expensive operation that should not be used in production.</em>
--spec mapred_bucket(Pid::pid(), Bucket::bucket(), Query::[mapred_queryterm()],
+-spec mapred_bucket(Ref::ref(), Bucket::bucket(), Query::[mapred_queryterm()],
                     Timeout::timeout(), CallTimeout::timeout()) ->
                            {ok, mapred_result()} |
                            {error, {badqterm, mapred_queryterm()}} |
                            {error, timeout} |
                            {error, Err :: term()}.
-mapred_bucket(Pid, Bucket, Query, Timeout, CallTimeout) ->
-    case mapred_bucket_stream(Pid, Bucket, Query, self(), Timeout, CallTimeout) of
+mapred_bucket(Ref, Bucket, Query, Timeout, CallTimeout) ->
+    case mapred_bucket_stream(Ref, Bucket, Query, self(), Timeout, CallTimeout) of
         {ok, ReqId} ->
             wait_for_mapred(ReqId, Timeout);
         Error ->
@@ -818,12 +836,12 @@ mapred_bucket(Pid, Bucket, Query, Timeout, CallTimeout) ->
 %%      The ClientPid will receive messages in this format:
 %% ```  {ReqId::req_id(), {mapred, Phase::non_neg_integer(), mapred_result()}}
 %%      {ReqId::req_id(), done}'''
-%% @equiv     mapred_bucket_stream(Pid, Bucket, Query, ClientPid, Timeout, default_timeout(mapred_bucket_stream_call_timeout))
--spec mapred_bucket_stream(ConnectionPid::pid(), bucket(), [mapred_queryterm()], ClientPid::pid(), timeout()) ->
+%% @equiv     mapred_bucket_stream(Ref, Bucket, Query, ClientPid, Timeout, default_timeout(mapred_bucket_stream_call_timeout))
+-spec mapred_bucket_stream(ConnectionPid::ref(), bucket(), [mapred_queryterm()], ClientPid::ref(), timeout()) ->
                                   {ok, req_id()} |
                                   {error, term()}.
-mapred_bucket_stream(Pid, Bucket, Query, ClientPid, Timeout) ->
-    mapred_bucket_stream(Pid, Bucket, Query, ClientPid, Timeout,
+mapred_bucket_stream(Ref, Bucket, Query, ClientPid, Timeout) ->
+    mapred_bucket_stream(Ref, Bucket, Query, ClientPid, Timeout,
                          default_timeout(mapred_bucket_stream_call_timeout)).
 
 %% @doc Perform a streaming MapReduce job against a bucket with a server timeout
@@ -834,65 +852,65 @@ mapred_bucket_stream(Pid, Bucket, Query, ClientPid, Timeout) ->
 %% ```  {ReqId::req_id(), {mapred, Phase::non_neg_integer(), mapred_result()}}
 %%      {ReqId::req_id(), done}'''
 %% @deprecated because `CallTimeout' is ignored
--spec mapred_bucket_stream(ConnectionPid::pid(), bucket(), [mapred_queryterm()], ClientPid::pid(), timeout(), timeout()) ->
+-spec mapred_bucket_stream(ConnectionPid::ref(), bucket(), [mapred_queryterm()], ClientPid::ref(), timeout(), timeout()) ->
                                   {ok, req_id()} | {error, term()}.
-mapred_bucket_stream(Pid, Bucket, Query, ClientPid, Timeout, _CallTimeout) ->
+mapred_bucket_stream(Ref, Bucket, Query, ClientPid, Timeout, _CallTimeout) ->
     MapRed = [{'inputs', Bucket},
               {'query', Query},
               {'timeout', Timeout}],
-    send_mapred_req(Pid, MapRed, ClientPid).
+    send_mapred_req(Ref, MapRed, ClientPid).
 
 
 %% @doc Execute a search query. This command will return an error
 %%      unless executed against a Riak Search cluster.
--spec search(pid(), binary(), binary()) ->
+-spec search(ref(), binary(), binary()) ->
                     {ok, search_result()} | {error, term()}.
-search(Pid, Index, SearchQuery) ->
-    search(Pid, Index, SearchQuery, []).
+search(Ref, Index, SearchQuery) ->
+    search(Ref, Index, SearchQuery, []).
 
 %% @doc Execute a search query. This command will return an error
 %%      unless executed against a Riak Search cluster.
--spec search(pid(), binary(), binary(), search_options()) ->
+-spec search(ref(), binary(), binary(), search_options()) ->
                     {ok, search_result()} | {error, term()}.
-search(Pid, Index, SearchQuery, Options) ->
+search(Ref, Index, SearchQuery, Options) ->
     Timeout = default_timeout(search_timeout),
-    search(Pid, Index, SearchQuery, Options, Timeout).
+    search(Ref, Index, SearchQuery, Options, Timeout).
 
 %% @doc Execute a search query. This command will return an error
 %%      unless executed against a Riak Search cluster.
--spec search(pid(), binary(), binary(), search_options(), timeout()) ->
+-spec search(ref(), binary(), binary(), search_options(), timeout()) ->
                     {ok, search_result()} | {error, term()}.
-search(Pid, Index, SearchQuery, Options, Timeout) ->
+search(Ref, Index, SearchQuery, Options, Timeout) ->
     CallTimeout = default_timeout(search_call_timeout),
-    search(Pid, Index, SearchQuery, Options, Timeout, CallTimeout).
+    search(Ref, Index, SearchQuery, Options, Timeout, CallTimeout).
 
 %% @doc Execute a search query. This command will return an error
 %%      unless executed against a Riak Search cluster.
 %% @deprecated because `CallTimeout' is ignored
--spec search(pid(), binary(), binary(), search_options(), timeout(), timeout()) ->
+-spec search(ref(), binary(), binary(), search_options(), timeout(), timeout()) ->
                     {ok, search_result()} | {error, term()}.
-search(Pid, Index, SearchQuery, Options, Timeout, _CallTimeout) ->
+search(Ref, Index, SearchQuery, Options, Timeout, _CallTimeout) ->
     Req = search_options(Options, #rpbsearchqueryreq{q = SearchQuery, index = Index}),
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
--spec get_search_schema(pid(), binary(), search_admin_opts()) ->
+-spec get_search_schema(ref(), binary(), search_admin_opts()) ->
                     {ok, search_schema()} | {error, term()}.
-get_search_schema(Pid, SchemaName, Opts) ->
+get_search_schema(Ref, SchemaName, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
     Req = #rpbyokozunaschemagetreq{ name = SchemaName },
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
--spec get_search_schema(pid(), binary()) ->
+-spec get_search_schema(ref(), binary()) ->
                     {ok, search_schema()} | {error, term()}.
-get_search_schema(Pid, SchemaName) ->
-    get_search_schema(Pid, SchemaName, []).
+get_search_schema(Ref, SchemaName) ->
+    get_search_schema(Ref, SchemaName, []).
 
--spec get_search_index(pid(), binary(), search_admin_opts()) ->
+-spec get_search_index(ref(), binary(), search_admin_opts()) ->
                     {ok, search_index()} | {error, term()}.
-get_search_index(Pid, Index, Opts) ->
+get_search_index(Ref, Index, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
     Req = #rpbyokozunaindexgetreq{ name = Index },
-    Results = call_infinity(Pid, {req, Req, Timeout}),
+    Results = call_infinity(Ref, {req, Req, Timeout}),
     case Results of
         {ok, [Result]} ->
             {ok, Result};
@@ -901,59 +919,59 @@ get_search_index(Pid, Index, Opts) ->
         X -> X
     end.
 
--spec get_search_index(pid(), binary()) ->
+-spec get_search_index(ref(), binary()) ->
                     {ok, search_index()} | {error, term()}.
-get_search_index(Pid, Index) ->
-    get_search_index(Pid, Index, []).
+get_search_index(Ref, Index) ->
+    get_search_index(Ref, Index, []).
 
--spec list_search_indexes(pid(), search_admin_opts()) ->
+-spec list_search_indexes(ref(), search_admin_opts()) ->
                     {ok, [search_index()]} | {error, term()}.
-list_search_indexes(Pid, Opts) ->
+list_search_indexes(Ref, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
-    call_infinity(Pid, {req, #rpbyokozunaindexgetreq{}, Timeout}).
+    call_infinity(Ref, {req, #rpbyokozunaindexgetreq{}, Timeout}).
 
--spec list_search_indexes(pid()) ->
+-spec list_search_indexes(ref()) ->
                     {ok, [search_index()]} | {error, term()}.
-list_search_indexes(Pid) ->
-    list_search_indexes(Pid, []).
+list_search_indexes(Ref) ->
+    list_search_indexes(Ref, []).
 
 %% @doc Create a schema, which is a required component of an index.
--spec create_search_schema(pid(), binary(), binary()) ->
+-spec create_search_schema(ref(), binary(), binary()) ->
                     ok | {error, term()}.
-create_search_schema(Pid, SchemaName, Content) ->
-    create_search_schema(Pid, SchemaName, Content, []).
+create_search_schema(Ref, SchemaName, Content) ->
+    create_search_schema(Ref, SchemaName, Content, []).
 
 %% @doc Create a schema, which is a required component of an index.
--spec create_search_schema(pid(), binary(), binary(), search_admin_opts()) ->
+-spec create_search_schema(ref(), binary(), binary(), search_admin_opts()) ->
                     ok | {error, term()}.
-create_search_schema(Pid, SchemaName, Content, Opts) ->
+create_search_schema(Ref, SchemaName, Content, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
     Req = #rpbyokozunaschemaputreq{
         schema = #rpbyokozunaschema{name = SchemaName, content = Content}
     },
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Create a search index.
--spec create_search_index(pid(), binary()) ->
+-spec create_search_index(ref(), binary()) ->
                     ok | {error, term()}.
-create_search_index(Pid, Index) ->
-    create_search_index(Pid, Index, <<>>, []).
+create_search_index(Ref, Index) ->
+    create_search_index(Ref, Index, <<>>, []).
 
--spec create_search_index(pid(), binary(), timeout() | search_admin_opts()) ->
+-spec create_search_index(ref(), binary(), timeout() | search_admin_opts()) ->
                                  ok | {error, term()}.
-create_search_index(Pid, Index, Timeout)
+create_search_index(Ref, Index, Timeout)
   when is_integer(Timeout); Timeout =:= infinity ->
-    create_search_index(Pid, Index, <<>>, [{timeout, Timeout}]);
-create_search_index(Pid, Index, Opts) ->
-    create_search_index(Pid, Index, <<>>, Opts).
+    create_search_index(Ref, Index, <<>>, [{timeout, Timeout}]);
+create_search_index(Ref, Index, Opts) ->
+    create_search_index(Ref, Index, <<>>, Opts).
 
--spec create_search_index(pid(), binary(), binary(),
+-spec create_search_index(ref(), binary(), binary(),
                           timeout()|search_admin_opts()) ->
                                  ok | {error, term()}.
-create_search_index(Pid, Index, SchemaName, Timeout)
+create_search_index(Ref, Index, SchemaName, Timeout)
   when is_integer(Timeout); Timeout =:= infinity  ->
-    create_search_index(Pid, Index, SchemaName, [{timeout, Timeout}]);
-create_search_index(Pid, Index, SchemaName, Opts) ->
+    create_search_index(Ref, Index, SchemaName, [{timeout, Timeout}]);
+create_search_index(Ref, Index, SchemaName, Opts) ->
     ST = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
     NVal = proplists:get_value(n_val, Opts),
     Req = set_index_create_req_nval(NVal, Index, SchemaName),
@@ -974,26 +992,26 @@ create_search_index(Pid, Index, SchemaName, Opts) ->
              true ->
                  ST
          end,
-    call_infinity(Pid, {req, Req1, CT}).
+    call_infinity(Ref, {req, Req1, CT}).
 
 %% @doc Delete a search index.
--spec delete_search_index(pid(), binary()) ->
+-spec delete_search_index(ref(), binary()) ->
                     ok | {error, term()}.
-delete_search_index(Pid, Index) ->
-    delete_search_index(Pid, Index, []).
+delete_search_index(Ref, Index) ->
+    delete_search_index(Ref, Index, []).
 
 %% @doc Delete a search index.
--spec delete_search_index(pid(), binary(), search_admin_opts()) ->
+-spec delete_search_index(ref(), binary(), search_admin_opts()) ->
                     ok | {error, term()}.
-delete_search_index(Pid, Index, Opts) ->
+delete_search_index(Ref, Index, Opts) ->
     Timeout = proplists:get_value(timeout, Opts, default_timeout(search_timeout)),
     Req = #rpbyokozunaindexdeletereq{name = Index},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
--spec set_search_index(pid(), bucket() | bucket_and_type(), binary()) ->
+-spec set_search_index(ref(), bucket() | bucket_and_type(), binary()) ->
                     ok | {error, term()}.
-set_search_index(Pid, Bucket, Index) ->
-    set_bucket(Pid, Bucket, [{search_index, Index}]).
+set_search_index(Ref, Bucket, Index) ->
+    set_bucket(Ref, Bucket, [{search_index, Index}]).
 
 
 %% Deprecated, argument explosion functions for indexes
@@ -1002,48 +1020,48 @@ set_search_index(Pid, Bucket, Index) ->
 %%
 %% @deprecated use {@link get_index_eq/4}
 %% @see get_index_eq/4
--spec get_index(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer()) ->
+-spec get_index(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer()) ->
                        {ok, index_results()} | {error, term()}.
-get_index(Pid, Bucket, Index, Key) ->
-    get_index_eq(Pid, Bucket, Index, Key).
+get_index(Ref, Bucket, Index, Key) ->
+    get_index_eq(Ref, Bucket, Index, Key).
 
 %% @doc Execute a secondary index equality query with specified
 %% timeouts.
 %%
 %% @deprecated use {@link get_index_eq/5}
 %% @see get_index_eq/5
--spec get_index(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), timeout(), timeout()) ->
+-spec get_index(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), timeout(), timeout()) ->
                        {ok, index_results()} | {error, term()}.
-get_index(Pid, Bucket, Index, Key, Timeout, _CallTimeout) ->
-    get_index_eq(Pid, Bucket, Index, Key, [{timeout, Timeout}]).
+get_index(Ref, Bucket, Index, Key, Timeout, _CallTimeout) ->
+    get_index_eq(Ref, Bucket, Index, Key, [{timeout, Timeout}]).
 
 %% @doc Execute a secondary index range query.
 %%
 %% @deprecated use {@link get_index_range/5}
 %% @see get_index_range/5
--spec get_index(pid(), bucket(), binary() | secondary_index_id(), key() | integer(), key() | integer()) ->
+-spec get_index(ref(), bucket(), binary() | secondary_index_id(), key() | integer(), key() | integer()) ->
                        {ok, index_results()} | {error, term()}.
-get_index(Pid, Bucket, Index, StartKey, EndKey) ->
-    get_index_range(Pid, Bucket, Index, StartKey, EndKey).
+get_index(Ref, Bucket, Index, StartKey, EndKey) ->
+    get_index_range(Ref, Bucket, Index, StartKey, EndKey).
 
 %% @doc Execute a secondary index range query with specified
 %% timeouts.
 %%
 %% @deprecated use {@link get_index_range/6}
 %% @see get_index_range/6
--spec get_index(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer() | list(),
+-spec get_index(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer() | list(),
                 key() | integer() | list(), timeout(), timeout()) ->
                        {ok, index_results()} | {error, term()}.
-get_index(Pid, Bucket, Index, StartKey, EndKey, Timeout, _CallTimeout) ->
-    get_index_range(Pid, Bucket, Index, StartKey, EndKey, [{timeout, Timeout}]).
+get_index(Ref, Bucket, Index, StartKey, EndKey, Timeout, _CallTimeout) ->
+    get_index_range(Ref, Bucket, Index, StartKey, EndKey, [{timeout, Timeout}]).
 
 %% @doc Execute a secondary index equality query.
 %% equivalent to all defaults for the options.
 %% @see get_index_eq/5. for options and their effect
--spec get_index_eq(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer()) ->
+-spec get_index_eq(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer()) ->
                        {ok, index_results()} | {error, term()}.
-get_index_eq(Pid, Bucket, Index, Key) ->
-    get_index_eq(Pid, Bucket, Index, Key, []).
+get_index_eq(Ref, Bucket, Index, Key) ->
+    get_index_eq(Ref, Bucket, Index, Key, []).
 
 %% @doc Execute a secondary index equality query with specified options
 %% <dl>
@@ -1055,16 +1073,16 @@ get_index_eq(Pid, Bucket, Index, Key) ->
 %%                           Expect a <code>continuation</code> in the response if this option is used.</dd>
 %% </dl>
 %% @end
--spec get_index_eq(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), index_opts()) ->
+-spec get_index_eq(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), index_opts()) ->
                        {ok, index_results()} | {error, term()}.
-get_index_eq(Pid, Bucket, {binary_index, Name}, Key, Opts) when is_binary(Key) ->
+get_index_eq(Ref, Bucket, {binary_index, Name}, Key, Opts) when is_binary(Key) ->
     Index = list_to_binary(lists:append([Name, "_bin"])),
-    get_index_eq(Pid, Bucket, Index, Key, Opts);
-get_index_eq(Pid, Bucket, {integer_index, Name}, Key, Opts) when is_integer(Key) ->
+    get_index_eq(Ref, Bucket, Index, Key, Opts);
+get_index_eq(Ref, Bucket, {integer_index, Name}, Key, Opts) when is_integer(Key) ->
     Index = list_to_binary(lists:append([Name, "_int"])),
     BinKey = list_to_binary(integer_to_list(Key)),
-    get_index_eq(Pid, Bucket, Index, BinKey, Opts);
-get_index_eq(Pid, Bucket, Index, Key, Opts) ->
+    get_index_eq(Ref, Bucket, Index, BinKey, Opts);
+get_index_eq(Ref, Bucket, Index, Key, Opts) ->
     Timeout = proplists:get_value(timeout, Opts),
     MaxResults = proplists:get_value(max_results, Opts),
     PgSort = proplists:get_value(pagination_sort, Opts),
@@ -1091,13 +1109,13 @@ get_index_eq(Pid, Bucket, Index, Key, Opts) ->
                false ->
                    {req, Req, Timeout}
            end,
-    call_infinity(Pid, Call).
+    call_infinity(Ref, Call).
 
 %% @doc Execute a secondary index range query.
--spec get_index_range(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), key() | integer()) ->
+-spec get_index_range(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer(), key() | integer()) ->
                        {ok, index_results()} | {error, term()}.
-get_index_range(Pid, Bucket, Index, StartKey, EndKey) ->
-    get_index_range(Pid, Bucket, Index, StartKey, EndKey, []).
+get_index_range(Ref, Bucket, Index, StartKey, EndKey) ->
+    get_index_range(Ref, Bucket, Index, StartKey, EndKey, []).
 
 %% @doc Execute a secondary index range query with specified options.
 %% As well as the options documented for `get_index_eq/5', there is a further options
@@ -1106,18 +1124,18 @@ get_index_range(Pid, Bucket, Index, StartKey, EndKey) ->
 %% `{results, [{value, primary_key}]}'
 %% @end
 %% @see get_index_eq/5. for effect of options.
--spec get_index_range(pid(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer() | list(),
+-spec get_index_range(ref(), bucket() | bucket_and_type(), binary() | secondary_index_id(), key() | integer() | list(),
                 key() | integer() | list(), range_index_opts()) ->
                        {ok, index_results()} | {error, term()}.
-get_index_range(Pid, Bucket, {binary_index, Name}, StartKey, EndKey, Opts) when is_binary(StartKey) andalso is_binary(EndKey) ->
+get_index_range(Ref, Bucket, {binary_index, Name}, StartKey, EndKey, Opts) when is_binary(StartKey) andalso is_binary(EndKey) ->
     Index = list_to_binary(lists:append([Name, "_bin"])),
-    get_index_range(Pid, Bucket, Index, StartKey, EndKey, Opts);
-get_index_range(Pid, Bucket, {integer_index, Name}, StartKey, EndKey, Opts) when is_integer(StartKey) andalso is_integer(EndKey) ->
+    get_index_range(Ref, Bucket, Index, StartKey, EndKey, Opts);
+get_index_range(Ref, Bucket, {integer_index, Name}, StartKey, EndKey, Opts) when is_integer(StartKey) andalso is_integer(EndKey) ->
     Index = list_to_binary(lists:append([Name, "_int"])),
     BinStartKey = list_to_binary(integer_to_list(StartKey)),
     BinEndKey = list_to_binary(integer_to_list(EndKey)),
-    get_index_range(Pid, Bucket, Index, BinStartKey, BinEndKey, Opts);
-get_index_range(Pid, Bucket, Index, StartKey, EndKey, Opts) ->
+    get_index_range(Ref, Bucket, Index, BinStartKey, BinEndKey, Opts);
+get_index_range(Ref, Bucket, Index, StartKey, EndKey, Opts) ->
     Timeout = proplists:get_value(timeout, Opts),
     ReturnTerms = proplists:get_value(return_terms, Opts),
     TermRegex = proplists:get_value(term_regex, Opts),
@@ -1149,7 +1167,7 @@ get_index_range(Pid, Bucket, Index, StartKey, EndKey, Opts) ->
                false ->
                    {req, Req, Timeout}
            end,
-    call_infinity(Pid, Call).
+    call_infinity(Ref, Call).
 
 encode_2i(Value) when is_integer(Value) ->
     list_to_binary(integer_to_list(Value));
@@ -1159,9 +1177,8 @@ encode_2i(Value) when is_binary(Value) ->
     Value.
 
 %% @doc secret function, do not use, or I come to your house and keeel you.
--spec cs_bucket_fold(pid(), bucket() | bucket_and_type(), cs_opts()) -> {ok, reference()} | {error, term()}.
-cs_bucket_fold(Pid, Bucket, Opts) when is_pid(Pid), (is_binary(Bucket) orelse
-                                                     is_tuple(Bucket)), is_list(Opts) ->
+-spec cs_bucket_fold(ref(), bucket() | bucket_and_type(), cs_opts()) -> {ok, reference()} | {error, term()}.
+cs_bucket_fold(Ref, Bucket, Opts) when (is_binary(Bucket) orelse is_tuple(Bucket)), is_list(Opts) ->
     Timeout = proplists:get_value(timeout, Opts),
     StartKey = proplists:get_value(start_key, Opts, <<>>),
     EndKey = proplists:get_value(end_key, Opts),
@@ -1184,7 +1201,7 @@ cs_bucket_fold(Pid, Bucket, Opts) when is_pid(Pid), (is_binary(Bucket) orelse
                           timeout=Timeout},
     ReqId = mk_reqid(),
     Call = {req, Req, Timeout, {ReqId, self()}},
-    call_infinity(Pid, Call).
+    call_infinity(Ref, Call).
 
 %% @doc Return the default timeout for an operation if none is provided.
 %%      Falls back to the default timeout.
@@ -1204,144 +1221,144 @@ default_timeout(OpTimeout) ->
 
 %% @doc Send a pre-encoded msg over the protocol buffer connection
 %% Returns {ok, Response} or {error, Reason}
--spec tunnel(pid(), msg_id(), iolist(), timeout()) -> {ok, binary()} | {error, term()}.
-tunnel(Pid, MsgId, Pkt, Timeout) ->
+-spec tunnel(ref(), msg_id(), iolist(), timeout()) -> {ok, binary()} | {error, term()}.
+tunnel(Ref, MsgId, Pkt, Timeout) ->
     Req = {tunneled, MsgId, Pkt},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc increment the pre-Riak 2 counter at `bucket', `key' by `amount'
--spec counter_incr(pid(), bucket() | bucket_and_type(), key(), integer()) -> ok.
-counter_incr(Pid, Bucket, Key, Amount) ->
-    counter_incr(Pid, Bucket, Key, Amount, []).
+-spec counter_incr(ref(), bucket() | bucket_and_type(), key(), integer()) -> ok.
+counter_incr(Ref, Bucket, Key, Amount) ->
+    counter_incr(Ref, Bucket, Key, Amount, []).
 
 %% @doc increment the pre-Riak 2 counter at `Bucket', `Key' by `Amount'.
 %% use the provided `write_quorum()' `Options' for the operation.
 %% A counter increment is a lot like a riak `put' so the semantics
 %% are the same for the given options.
--spec counter_incr(pid(), bucket() | bucket_and_type(), key(), integer(), [write_quorum()]) ->
+-spec counter_incr(ref(), bucket() | bucket_and_type(), key(), integer(), [write_quorum()]) ->
     ok | {error, term()}.
-counter_incr(Pid, Bucket, Key, Amount, Options) ->
+counter_incr(Ref, Bucket, Key, Amount, Options) ->
     {_, B} = maybe_bucket_type(Bucket),
     Req = counter_incr_options(Options, #rpbcounterupdatereq{bucket=B, key=Key, amount=Amount}),
-    call_infinity(Pid, {req, Req, default_timeout(put_timeout)}).
+    call_infinity(Ref, {req, Req, default_timeout(put_timeout)}).
 
 %% @doc get the current value of the pre-Riak 2 counter at `Bucket', `Key'.
--spec counter_val(pid(), bucket() | bucket_and_type(), key()) ->
+-spec counter_val(ref(), bucket() | bucket_and_type(), key()) ->
                          {ok, integer()} | {error, notfound}.
-counter_val(Pid, Bucket, Key) ->
-    counter_val(Pid, Bucket, Key, []).
+counter_val(Ref, Bucket, Key) ->
+    counter_val(Ref, Bucket, Key, []).
 
 %% @doc get the current value of the pre-Riak 2 counter at `Bucket', `Key' using
 %% the `read_qurom()' `Options' provided.
--spec counter_val(pid(), bucket() | bucket_and_type(), key(), [read_quorum()]) ->
+-spec counter_val(ref(), bucket() | bucket_and_type(), key(), [read_quorum()]) ->
                          {ok, integer()} | {error, term()}.
-counter_val(Pid, Bucket, Key, Options) ->
+counter_val(Ref, Bucket, Key, Options) ->
     {_, B} = maybe_bucket_type(Bucket),
     Req = counter_val_options(Options, #rpbcountergetreq{bucket=B, key=Key}),
-    call_infinity(Pid, {req, Req, default_timeout(get_timeout)}).
+    call_infinity(Ref, {req, Req, default_timeout(get_timeout)}).
 
 
 %% @doc Fetches the representation of a convergent datatype from Riak.
--spec fetch_type(pid(), bucket_and_type(), Key::binary()) ->
+-spec fetch_type(ref(), bucket_and_type(), Key::binary()) ->
                         {ok, riakc_datatype:datatype()} | {error, Reason}
                             when Reason :: {notfound, Type::atom()} | term().
-fetch_type(Pid, BucketAndType, Key) ->
-    fetch_type(Pid, BucketAndType, Key, []).
+fetch_type(Ref, BucketAndType, Key) ->
+    fetch_type(Ref, BucketAndType, Key, []).
 
 %% @doc Fetches the representation of a convergent datatype from Riak,
 %% using the given request options.
--spec fetch_type(pid(), bucket_and_type(), Key::binary(), [proplists:property()]) ->
+-spec fetch_type(ref(), bucket_and_type(), Key::binary(), [proplists:property()]) ->
                         {ok, riakc_datatype:datatype()} | {error, Reason}
                             when Reason :: {notfound, Type::atom()} | term().
-fetch_type(Pid, BucketAndType, Key, Options) ->
+fetch_type(Ref, BucketAndType, Key, Options) ->
     Req = riak_pb_dt_codec:encode_fetch_request(BucketAndType, Key, Options),
-    call_infinity(Pid, {req, Req, default_timeout(get_timeout)}).
+    call_infinity(Ref, {req, Req, default_timeout(get_timeout)}).
 
 %% @doc Updates the convergent datatype in Riak with local
 %% modifications stored in the container type.
--spec update_type(pid(), bucket_and_type(), Key::binary()|'undefined', Update::riakc_datatype:update(term())) ->
+-spec update_type(ref(), bucket_and_type(), Key::binary()|'undefined', Update::riakc_datatype:update(term())) ->
                          ok | {ok, Key::binary()} | {ok, riakc_datatype:datatype()} |
                          {ok, Key::binary(), riakc_datatype:datatype()} | {error, term()}.
-update_type(Pid, BucketAndType, Key, Update) ->
-    update_type(Pid, BucketAndType, Key, Update, []).
+update_type(Ref, BucketAndType, Key, Update) ->
+    update_type(Ref, BucketAndType, Key, Update, []).
 
 %% @doc Updates the convergent datatype in Riak with local
 %% modifications stored in the container type, using the given request
 %% options.
--spec update_type(pid(), bucket_and_type(), Key::binary()|'undefined',
+-spec update_type(ref(), bucket_and_type(), Key::binary()|'undefined',
                   Update::riakc_datatype:update(term()), [proplists:property()]) ->
                          ok | {ok, Key::binary()} | {ok, riakc_datatype:datatype()} |
                          {ok, Key::binary(), riakc_datatype:datatype()} | {error, term()}.
 update_type(_Pid, _BucketAndType, _Key, undefined, _Options) ->
     {error, unmodified};
-update_type(Pid, BucketAndType, Key, {Type, Op, Context}, Options) ->
+update_type(Ref, BucketAndType, Key, {Type, Op, Context}, Options) ->
     Req = riak_pb_dt_codec:encode_update_request(BucketAndType, Key, {Type, Op, Context}, Options),
-    call_infinity(Pid, {req, Req, default_timeout(put_timeout)}).
+    call_infinity(Ref, {req, Req, default_timeout(put_timeout)}).
 
 %% @doc Fetches, applies the given function to the value, and then
 %% updates the datatype in Riak. If an existing value is not found,
 %% but you want the updates to apply anyway, use the 'create' option.
--spec modify_type(pid(), fun((riakc_datatype:datatype()) -> riakc_datatype:datatype()),
+-spec modify_type(ref(), fun((riakc_datatype:datatype()) -> riakc_datatype:datatype()),
                   bucket_and_type(), Key::binary(), [proplists:property()]) ->
                          ok | {ok, riakc_datatype:datatype()} | {error, term()}.
-modify_type(Pid, Fun, BucketAndType, Key, ModifyOptions) ->
+modify_type(Ref, Fun, BucketAndType, Key, ModifyOptions) ->
     Create = proplists:get_value(create, ModifyOptions, true),
     Options = proplists:delete(create, ModifyOptions),
 
-    case fetch_type(Pid, BucketAndType, Key, Options) of
+    case fetch_type(Ref, BucketAndType, Key, Options) of
         {ok, Data} ->
             NewData = Fun(Data),
             Mod = riakc_datatype:module_for_term(NewData),
-            update_type(Pid, BucketAndType, Key, Mod:to_op(NewData), Options);
+            update_type(Ref, BucketAndType, Key, Mod:to_op(NewData), Options);
         {error, {notfound, Type}} when Create ->
             %% Not found, but ok to create it
             Mod = riakc_datatype:module_for_type(Type),
             NewData = Fun(Mod:new()),
-            update_type(Pid, BucketAndType, Key, Mod:to_op(NewData), Options);
+            update_type(Ref, BucketAndType, Key, Mod:to_op(NewData), Options);
         {error, Reason} ->
             {error, Reason}
     end.
 
 %% @doc Get active preflist.
-%% @equiv get_preflist(Pid, Bucket, Key, default_timeout(get_preflist_timeout))
--spec get_preflist(pid(), bucket() | bucket_and_type(), key()) -> {ok, preflist()}
+%% @equiv get_preflist(Ref, Bucket, Key, default_timeout(get_preflist_timeout))
+-spec get_preflist(ref(), bucket() | bucket_and_type(), key()) -> {ok, preflist()}
                                                                       | {error, term()}.
-get_preflist(Pid, Bucket, Key) ->
-    get_preflist(Pid, Bucket, Key, default_timeout(get_preflist_timeout)).
+get_preflist(Ref, Bucket, Key) ->
+    get_preflist(Ref, Bucket, Key, default_timeout(get_preflist_timeout)).
 
 %% @doc Get active preflist specifying a server side timeout.
-%% @equiv get_preflist(Pid, Bucket, Key, default_timeout(get_preflist_timeout))
--spec get_preflist(pid(), bucket() | bucket_and_type(), key(), timeout()) -> {ok, preflist()}
+%% @equiv get_preflist(Ref, Bucket, Key, default_timeout(get_preflist_timeout))
+-spec get_preflist(ref(), bucket() | bucket_and_type(), key(), timeout()) -> {ok, preflist()}
                                                                                  | {error, term()}.
-get_preflist(Pid, Bucket, Key, Timeout) ->
+get_preflist(Ref, Bucket, Key, Timeout) ->
     {T, B} = maybe_bucket_type(Bucket),
     Req = #rpbgetbucketkeypreflistreq{type = T, bucket = B, key = Key},
-    call_infinity(Pid, {req, Req, Timeout}).
+    call_infinity(Ref, {req, Req, Timeout}).
 
 %% @doc Get minimal coverage plan
-%% @equiv get_coverage(Pid, Bucket, undefined)
--spec get_coverage(pid(), bucket()) -> {ok, term()}
+%% @equiv get_coverage(Ref, Bucket, undefined)
+-spec get_coverage(ref(), bucket()) -> {ok, term()}
                                            | {error, term()}.
-get_coverage(Pid, Bucket) ->
-    get_coverage(Pid, Bucket, undefined).
+get_coverage(Ref, Bucket) ->
+    get_coverage(Ref, Bucket, undefined).
 
 %% @doc Get parallel coverage plan if 3rd argument is >= 0
--spec get_coverage(pid(), bucket(), undefined | non_neg_integer()) -> {ok, term()}
+-spec get_coverage(ref(), bucket(), undefined | non_neg_integer()) -> {ok, term()}
                                                  | {error, term()}.
-get_coverage(Pid, Bucket, MinPartitions) ->
+get_coverage(Ref, Bucket, MinPartitions) ->
     Timeout = default_timeout(get_coverage_timeout),
     {T, B} = maybe_bucket_type(Bucket),
-    call_infinity(Pid,
+    call_infinity(Ref,
                   {req, #rpbcoveragereq{type=T, bucket=B, min_partitions=MinPartitions},
                    Timeout}).
 
-replace_coverage(Pid, Bucket, Cover) ->
-    replace_coverage(Pid, Bucket, Cover, []).
+replace_coverage(Ref, Bucket, Cover) ->
+    replace_coverage(Ref, Bucket, Cover, []).
 
-replace_coverage(Pid, Bucket, Cover, Other) ->
+replace_coverage(Ref, Bucket, Cover, Other) ->
     Timeout = default_timeout(get_coverage_timeout),
     {T, B} = maybe_bucket_type(Bucket),
-    call_infinity(Pid,
+    call_infinity(Ref,
                   {req, #rpbcoveragereq{type=T, bucket=B, replace_cover=Cover, unavailable_cover=Other},
                    Timeout}).
 
@@ -2142,7 +2159,7 @@ fmt_err_msg(ErrMsg) ->
 
 %% Common code for sending a single bucket or multiple inputs map/request
 %% @private
-send_mapred_req(Pid, MapRed, ClientPid) ->
+send_mapred_req(Ref, MapRed, ClientPid) ->
     ReqMsg = #rpbmapredreq{request = encode_mapred_req(MapRed),
                            content_type = <<"application/x-erlang-binary">>},
     ReqId = mk_reqid(),
@@ -2156,7 +2173,7 @@ send_mapred_req(Pid, MapRed, ClientPid) ->
            true ->
                Timeout
            end,
-    call_infinity(Pid, {req, ReqMsg, Timeout1, {ReqId, ClientPid}}).
+    call_infinity(Ref, {req, ReqMsg, Timeout1, {ReqId, ClientPid}}).
 
 %% @private
 %% Make a new request that can be sent or queued
