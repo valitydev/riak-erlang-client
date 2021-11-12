@@ -34,7 +34,7 @@
                           {auto_reconnect, boolean()} |
                           keepalive |
                           {keepalive, boolean()} |
-                          {credentials, {string(), string()}} |
+                          {credentials, _Username :: string(), _Password :: string()} |
                           {certfile, file:filename()} |
                           {cacertfile, file:filename()} |
                           {keyfile, file:filename()} |
