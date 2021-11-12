@@ -33,7 +33,12 @@
                           auto_reconnect |
                           {auto_reconnect, boolean()} |
                           keepalive |
-                          {keepalive, boolean()}.
+                          {keepalive, boolean()} |
+                          {credentials, {string(), string()}} |
+                          {certfile, file:filename()} |
+                          {cacertfile, file:filename()} |
+                          {keyfile, file:filename()} |
+                          {ssl_opts, list()}.
 %% Options for starting or modifying the connection:
 %% `queue_if_disconnected' when present or true will cause requests to
 %% be queued while the connection is down. `auto_reconnect' when
